@@ -29,7 +29,6 @@
 #include "src/core/ext/transport/inproc/inproc_transport.h"
 #include "src/core/lib/channel/connected_channel.h"
 #include "src/core/lib/gpr/host_port.h"
-#include "src/core/lib/gpr/thd.h"
 #include "src/core/lib/surface/channel.h"
 #include "src/core/lib/surface/server.h"
 #include "test/core/util/port.h"
@@ -76,8 +75,9 @@ void inproc_tear_down(grpc_end2end_test_fixture* f) {
 
 /* All test configurations */
 static grpc_end2end_test_config configs[] = {
-    {"inproc", FEATURE_MASK_SUPPORTS_AUTHORITY_HEADER, inproc_create_fixture,
-     inproc_init_client, inproc_init_server, inproc_tear_down},
+    {"inproc", FEATURE_MASK_SUPPORTS_AUTHORITY_HEADER, nullptr,
+     inproc_create_fixture, inproc_init_client, inproc_init_server,
+     inproc_tear_down},
 };
 
 int main(int argc, char** argv) {

@@ -31,7 +31,6 @@
 #include "src/core/lib/channel/channel_args.h"
 #include "src/core/lib/channel/connected_channel.h"
 #include "src/core/lib/gpr/host_port.h"
-#include "src/core/lib/gpr/thd.h"
 #include "src/core/lib/surface/channel.h"
 #include "src/core/lib/surface/server.h"
 #include "test/core/util/port.h"
@@ -99,8 +98,9 @@ static grpc_end2end_test_config configs[] = {
      FEATURE_MASK_SUPPORTS_DELAYED_CONNECTION |
          FEATURE_MASK_SUPPORTS_CLIENT_CHANNEL |
          FEATURE_MASK_SUPPORTS_AUTHORITY_HEADER,
-     chttp2_create_fixture_load_reporting, chttp2_init_client_load_reporting,
-     chttp2_init_server_load_reporting, chttp2_tear_down_load_reporting},
+     nullptr, chttp2_create_fixture_load_reporting,
+     chttp2_init_client_load_reporting, chttp2_init_server_load_reporting,
+     chttp2_tear_down_load_reporting},
 };
 
 int main(int argc, char** argv) {

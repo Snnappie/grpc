@@ -30,7 +30,6 @@
 #include <grpc/support/string_util.h>
 #include <grpc/support/sync.h>
 
-#include "src/core/lib/gpr/thd.h"
 #include "src/core/lib/iomgr/load_file.h"
 #include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
@@ -65,7 +64,7 @@ static void readahead_handshaker_do_handshake(
 
 const grpc_handshaker_vtable readahead_handshaker_vtable = {
     readahead_handshaker_destroy, readahead_handshaker_shutdown,
-    readahead_handshaker_do_handshake};
+    readahead_handshaker_do_handshake, "read_ahead"};
 
 static grpc_handshaker* readahead_handshaker_create() {
   grpc_handshaker* h =

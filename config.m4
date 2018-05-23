@@ -8,11 +8,12 @@ if test "$PHP_GRPC" != "no"; then
   PHP_ADD_INCLUDE(PHP_EXT_SRCDIR()/include)
   PHP_ADD_INCLUDE(PHP_EXT_SRCDIR()/src/php/ext/grpc)
   PHP_ADD_INCLUDE(PHP_EXT_SRCDIR()/third_party/boringssl/include)
+  PHP_ADD_INCLUDE(PHP_EXT_SRCDIR()/third_party/address_sorting/include)
 
   LIBS="-lpthread $LIBS"
 
-  CFLAGS="-Wall -Werror -Wno-parentheses-equality -Wno-unused-value -std=c11"
-  CXXFLAGS="-std=c++11 -fno-exceptions -fno-rtti"
+  CFLAGS="-Wall -Werror -Wno-parentheses-equality -Wno-unused-value -std=c11 -g -O2 -D PB_FIELD_16BIT=1"
+  CXXFLAGS="-std=c++11 -fno-exceptions -fno-rtti -g -O2 -D PB_FIELD_16BIT=1"
   GRPC_SHARED_LIBADD="-lpthread $GRPC_SHARED_LIBADD"
   PHP_REQUIRE_CXX()
   PHP_ADD_LIBRARY(pthread)
@@ -39,6 +40,9 @@ if test "$PHP_GRPC" != "no"; then
     src/php/ext/grpc/server.c \
     src/php/ext/grpc/server_credentials.c \
     src/php/ext/grpc/timeval.c \
+    third_party/address_sorting/address_sorting.c \
+    third_party/address_sorting/address_sorting_posix.c \
+    third_party/address_sorting/address_sorting_windows.c \
     src/core/lib/gpr/alloc.cc \
     src/core/lib/gpr/arena.cc \
     src/core/lib/gpr/atm.cc \
@@ -65,9 +69,6 @@ if test "$PHP_GRPC" != "no"; then
     src/core/lib/gpr/sync.cc \
     src/core/lib/gpr/sync_posix.cc \
     src/core/lib/gpr/sync_windows.cc \
-    src/core/lib/gpr/thd.cc \
-    src/core/lib/gpr/thd_posix.cc \
-    src/core/lib/gpr/thd_windows.cc \
     src/core/lib/gpr/time.cc \
     src/core/lib/gpr/time_posix.cc \
     src/core/lib/gpr/time_precise.cc \
@@ -77,6 +78,8 @@ if test "$PHP_GRPC" != "no"; then
     src/core/lib/gpr/tmpfile_posix.cc \
     src/core/lib/gpr/tmpfile_windows.cc \
     src/core/lib/gpr/wrap_memcpy.cc \
+    src/core/lib/gprpp/thd_posix.cc \
+    src/core/lib/gprpp/thd_windows.cc \
     src/core/lib/profiling/basic_timers.cc \
     src/core/lib/profiling/stap_timers.cc \
     src/core/lib/surface/init.cc \
@@ -85,10 +88,13 @@ if test "$PHP_GRPC" != "no"; then
     src/core/lib/channel/channel_args.cc \
     src/core/lib/channel/channel_stack.cc \
     src/core/lib/channel/channel_stack_builder.cc \
+    src/core/lib/channel/channel_trace.cc \
+    src/core/lib/channel/channel_trace_registry.cc \
     src/core/lib/channel/connected_channel.cc \
     src/core/lib/channel/handshaker.cc \
     src/core/lib/channel/handshaker_factory.cc \
     src/core/lib/channel/handshaker_registry.cc \
+    src/core/lib/channel/status_util.cc \
     src/core/lib/compression/compression.cc \
     src/core/lib/compression/compression_internal.cc \
     src/core/lib/compression/message_compress.cc \
@@ -122,6 +128,8 @@ if test "$PHP_GRPC" != "no"; then
     src/core/lib/iomgr/gethostname_sysconf.cc \
     src/core/lib/iomgr/iocp_windows.cc \
     src/core/lib/iomgr/iomgr.cc \
+    src/core/lib/iomgr/iomgr_custom.cc \
+    src/core/lib/iomgr/iomgr_internal.cc \
     src/core/lib/iomgr/iomgr_posix.cc \
     src/core/lib/iomgr/iomgr_uv.cc \
     src/core/lib/iomgr/iomgr_windows.cc \
@@ -130,12 +138,16 @@ if test "$PHP_GRPC" != "no"; then
     src/core/lib/iomgr/lockfree_event.cc \
     src/core/lib/iomgr/network_status_tracker.cc \
     src/core/lib/iomgr/polling_entity.cc \
-    src/core/lib/iomgr/pollset_set_uv.cc \
+    src/core/lib/iomgr/pollset.cc \
+    src/core/lib/iomgr/pollset_custom.cc \
+    src/core/lib/iomgr/pollset_set.cc \
+    src/core/lib/iomgr/pollset_set_custom.cc \
     src/core/lib/iomgr/pollset_set_windows.cc \
     src/core/lib/iomgr/pollset_uv.cc \
     src/core/lib/iomgr/pollset_windows.cc \
+    src/core/lib/iomgr/resolve_address.cc \
+    src/core/lib/iomgr/resolve_address_custom.cc \
     src/core/lib/iomgr/resolve_address_posix.cc \
-    src/core/lib/iomgr/resolve_address_uv.cc \
     src/core/lib/iomgr/resolve_address_windows.cc \
     src/core/lib/iomgr/resource_quota.cc \
     src/core/lib/iomgr/sockaddr_utils.cc \
@@ -147,19 +159,24 @@ if test "$PHP_GRPC" != "no"; then
     src/core/lib/iomgr/socket_utils_uv.cc \
     src/core/lib/iomgr/socket_utils_windows.cc \
     src/core/lib/iomgr/socket_windows.cc \
+    src/core/lib/iomgr/tcp_client.cc \
+    src/core/lib/iomgr/tcp_client_custom.cc \
     src/core/lib/iomgr/tcp_client_posix.cc \
-    src/core/lib/iomgr/tcp_client_uv.cc \
     src/core/lib/iomgr/tcp_client_windows.cc \
+    src/core/lib/iomgr/tcp_custom.cc \
     src/core/lib/iomgr/tcp_posix.cc \
+    src/core/lib/iomgr/tcp_server.cc \
+    src/core/lib/iomgr/tcp_server_custom.cc \
     src/core/lib/iomgr/tcp_server_posix.cc \
     src/core/lib/iomgr/tcp_server_utils_posix_common.cc \
     src/core/lib/iomgr/tcp_server_utils_posix_ifaddrs.cc \
     src/core/lib/iomgr/tcp_server_utils_posix_noifaddrs.cc \
-    src/core/lib/iomgr/tcp_server_uv.cc \
     src/core/lib/iomgr/tcp_server_windows.cc \
     src/core/lib/iomgr/tcp_uv.cc \
     src/core/lib/iomgr/tcp_windows.cc \
     src/core/lib/iomgr/time_averaged_stats.cc \
+    src/core/lib/iomgr/timer.cc \
+    src/core/lib/iomgr/timer_custom.cc \
     src/core/lib/iomgr/timer_generic.cc \
     src/core/lib/iomgr/timer_heap.cc \
     src/core/lib/iomgr/timer_manager.cc \
@@ -180,7 +197,6 @@ if test "$PHP_GRPC" != "no"; then
     src/core/lib/slice/percent_encoding.cc \
     src/core/lib/slice/slice.cc \
     src/core/lib/slice/slice_buffer.cc \
-    src/core/lib/slice/slice_hash_table.cc \
     src/core/lib/slice/slice_intern.cc \
     src/core/lib/slice/slice_string_helpers.cc \
     src/core/lib/surface/alarm.cc \
@@ -212,6 +228,7 @@ if test "$PHP_GRPC" != "no"; then
     src/core/lib/transport/service_config.cc \
     src/core/lib/transport/static_metadata.cc \
     src/core/lib/transport/status_conversion.cc \
+    src/core/lib/transport/status_metadata.cc \
     src/core/lib/transport/timeout_encoding.cc \
     src/core/lib/transport/transport.cc \
     src/core/lib/transport/transport_op_string.cc \
@@ -246,6 +263,7 @@ if test "$PHP_GRPC" != "no"; then
     src/core/ext/filters/http/server/http_server_filter.cc \
     src/core/lib/http/httpcli_security_connector.cc \
     src/core/lib/security/context/security_context.cc \
+    src/core/lib/security/credentials/alts/alts_credentials.cc \
     src/core/lib/security/credentials/composite/composite_credentials.cc \
     src/core/lib/security/credentials/credentials.cc \
     src/core/lib/security/credentials/credentials_metadata.cc \
@@ -259,23 +277,56 @@ if test "$PHP_GRPC" != "no"; then
     src/core/lib/security/credentials/oauth2/oauth2_credentials.cc \
     src/core/lib/security/credentials/plugin/plugin_credentials.cc \
     src/core/lib/security/credentials/ssl/ssl_credentials.cc \
+    src/core/lib/security/security_connector/alts_security_connector.cc \
     src/core/lib/security/security_connector/security_connector.cc \
     src/core/lib/security/transport/client_auth_filter.cc \
-    src/core/lib/security/transport/lb_targets_info.cc \
     src/core/lib/security/transport/secure_endpoint.cc \
     src/core/lib/security/transport/security_handshaker.cc \
     src/core/lib/security/transport/server_auth_filter.cc \
+    src/core/lib/security/transport/target_authority_table.cc \
     src/core/lib/security/transport/tsi_error.cc \
     src/core/lib/security/util/json_util.cc \
     src/core/lib/surface/init_secure.cc \
-    src/core/tsi/alts_transport_security.cc \
-    src/core/tsi/fake_transport_security.cc \
-    src/core/tsi/ssl_transport_security.cc \
-    src/core/tsi/transport_security_grpc.cc \
+    src/core/tsi/alts/crypt/aes_gcm.cc \
+    src/core/tsi/alts/crypt/gsec.cc \
+    src/core/tsi/alts/frame_protector/alts_counter.cc \
+    src/core/tsi/alts/frame_protector/alts_crypter.cc \
+    src/core/tsi/alts/frame_protector/alts_frame_protector.cc \
+    src/core/tsi/alts/frame_protector/alts_record_protocol_crypter_common.cc \
+    src/core/tsi/alts/frame_protector/alts_seal_privacy_integrity_crypter.cc \
+    src/core/tsi/alts/frame_protector/alts_unseal_privacy_integrity_crypter.cc \
+    src/core/tsi/alts/frame_protector/frame_handler.cc \
+    src/core/tsi/alts/handshaker/alts_handshaker_client.cc \
+    src/core/tsi/alts/handshaker/alts_tsi_event.cc \
+    src/core/tsi/alts/handshaker/alts_tsi_handshaker.cc \
+    src/core/tsi/alts/zero_copy_frame_protector/alts_grpc_integrity_only_record_protocol.cc \
+    src/core/tsi/alts/zero_copy_frame_protector/alts_grpc_privacy_integrity_record_protocol.cc \
+    src/core/tsi/alts/zero_copy_frame_protector/alts_grpc_record_protocol_common.cc \
+    src/core/tsi/alts/zero_copy_frame_protector/alts_iovec_record_protocol.cc \
+    src/core/tsi/alts/zero_copy_frame_protector/alts_zero_copy_grpc_protector.cc \
+    src/core/lib/security/credentials/alts/check_gcp_environment.cc \
+    src/core/lib/security/credentials/alts/check_gcp_environment_linux.cc \
+    src/core/lib/security/credentials/alts/check_gcp_environment_no_op.cc \
+    src/core/lib/security/credentials/alts/check_gcp_environment_windows.cc \
+    src/core/lib/security/credentials/alts/grpc_alts_credentials_client_options.cc \
+    src/core/lib/security/credentials/alts/grpc_alts_credentials_options.cc \
+    src/core/lib/security/credentials/alts/grpc_alts_credentials_server_options.cc \
+    src/core/tsi/alts/handshaker/alts_handshaker_service_api.cc \
+    src/core/tsi/alts/handshaker/alts_handshaker_service_api_util.cc \
+    src/core/tsi/alts/handshaker/alts_tsi_utils.cc \
+    src/core/tsi/alts/handshaker/transport_security_common_api.cc \
+    src/core/tsi/alts/handshaker/altscontext.pb.c \
+    src/core/tsi/alts/handshaker/handshaker.pb.c \
+    src/core/tsi/alts/handshaker/transport_security_common.pb.c \
+    third_party/nanopb/pb_common.c \
+    third_party/nanopb/pb_decode.c \
+    third_party/nanopb/pb_encode.c \
     src/core/tsi/transport_security.cc \
     src/core/tsi/transport_security_adapter.cc \
-    src/core/ext/transport/chttp2/server/chttp2_server.cc \
-    src/core/ext/transport/chttp2/client/secure/secure_channel_create.cc \
+    src/core/ext/transport/chttp2/client/insecure/channel_create.cc \
+    src/core/ext/transport/chttp2/client/insecure/channel_create_posix.cc \
+    src/core/ext/transport/chttp2/client/authority.cc \
+    src/core/ext/transport/chttp2/client/chttp2_connector.cc \
     src/core/ext/filters/client_channel/backup_poller.cc \
     src/core/ext/filters/client_channel/channel_connectivity.cc \
     src/core/ext/filters/client_channel/client_channel.cc \
@@ -287,6 +338,7 @@ if test "$PHP_GRPC" != "no"; then
     src/core/ext/filters/client_channel/lb_policy.cc \
     src/core/ext/filters/client_channel/lb_policy_factory.cc \
     src/core/ext/filters/client_channel/lb_policy_registry.cc \
+    src/core/ext/filters/client_channel/method_params.cc \
     src/core/ext/filters/client_channel/parse_address.cc \
     src/core/ext/filters/client_channel/proxy_mapper.cc \
     src/core/ext/filters/client_channel/proxy_mapper_registry.cc \
@@ -297,11 +349,17 @@ if test "$PHP_GRPC" != "no"; then
     src/core/ext/filters/client_channel/subchannel_index.cc \
     src/core/ext/filters/client_channel/uri_parser.cc \
     src/core/ext/filters/deadline/deadline_filter.cc \
-    src/core/ext/transport/chttp2/client/chttp2_connector.cc \
+    src/core/tsi/alts_transport_security.cc \
+    src/core/tsi/fake_transport_security.cc \
+    src/core/tsi/ssl/session_cache/ssl_session_boringssl.cc \
+    src/core/tsi/ssl/session_cache/ssl_session_cache.cc \
+    src/core/tsi/ssl/session_cache/ssl_session_openssl.cc \
+    src/core/tsi/ssl_transport_security.cc \
+    src/core/tsi/transport_security_grpc.cc \
+    src/core/ext/transport/chttp2/server/chttp2_server.cc \
+    src/core/ext/transport/chttp2/client/secure/secure_channel_create.cc \
     src/core/ext/transport/chttp2/server/insecure/server_chttp2.cc \
     src/core/ext/transport/chttp2/server/insecure/server_chttp2_posix.cc \
-    src/core/ext/transport/chttp2/client/insecure/channel_create.cc \
-    src/core/ext/transport/chttp2/client/insecure/channel_create_posix.cc \
     src/core/ext/transport/inproc/inproc_plugin.cc \
     src/core/ext/transport/inproc/inproc_transport.cc \
     src/core/ext/filters/client_channel/lb_policy/grpclb/client_load_reporting_filter.cc \
@@ -310,12 +368,8 @@ if test "$PHP_GRPC" != "no"; then
     src/core/ext/filters/client_channel/lb_policy/grpclb/grpclb_client_stats.cc \
     src/core/ext/filters/client_channel/lb_policy/grpclb/load_balancer_api.cc \
     src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/load_balancer.pb.c \
-    third_party/nanopb/pb_common.c \
-    third_party/nanopb/pb_decode.c \
-    third_party/nanopb/pb_encode.c \
     src/core/ext/filters/client_channel/resolver/fake/fake_resolver.cc \
     src/core/ext/filters/client_channel/lb_policy/pick_first/pick_first.cc \
-    src/core/ext/filters/client_channel/lb_policy/subchannel_list.cc \
     src/core/ext/filters/client_channel/lb_policy/round_robin/round_robin.cc \
     src/core/ext/filters/client_channel/resolver/dns/c_ares/dns_resolver_ares.cc \
     src/core/ext/filters/client_channel/resolver/dns/c_ares/grpc_ares_ev_driver_posix.cc \
@@ -328,6 +382,7 @@ if test "$PHP_GRPC" != "no"; then
     src/core/ext/census/grpc_context.cc \
     src/core/ext/filters/max_age/max_age_filter.cc \
     src/core/ext/filters/message_size/message_size_filter.cc \
+    src/core/ext/filters/http/client_authority_filter.cc \
     src/core/ext/filters/workarounds/workaround_cronet_compression_filter.cc \
     src/core/ext/filters/workarounds/workaround_utils.cc \
     src/core/plugin_registry/grpc_plugin_registry.cc \
@@ -400,7 +455,6 @@ if test "$PHP_GRPC" != "no"; then
     third_party/boringssl/crypto/cpu-intel.c \
     third_party/boringssl/crypto/cpu-ppc64le.c \
     third_party/boringssl/crypto/crypto.c \
-    third_party/boringssl/crypto/curve25519/curve25519.c \
     third_party/boringssl/crypto/curve25519/spake25519.c \
     third_party/boringssl/crypto/curve25519/x25519-x86_64.c \
     third_party/boringssl/crypto/dh/check.c \
@@ -586,6 +640,7 @@ if test "$PHP_GRPC" != "no"; then
     third_party/boringssl/ssl/tls13_server.cc \
     third_party/boringssl/ssl/tls_method.cc \
     third_party/boringssl/ssl/tls_record.cc \
+    third_party/boringssl/third_party/fiat/curve25519.c \
     , $ext_shared, , -fvisibility=hidden \
     -DOPENSSL_NO_ASM -D_GNU_SOURCE -DWIN32_LEAN_AND_MEAN \
     -D_HAS_EXCEPTIONS=0 -DNOMINMAX -DGRPC_ARES=0)
@@ -595,7 +650,6 @@ if test "$PHP_GRPC" != "no"; then
   PHP_ADD_BUILD_DIR($ext_builddir/src/boringssl)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/ext/census)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/ext/filters/client_channel)
-  PHP_ADD_BUILD_DIR($ext_builddir/src/core/ext/filters/client_channel/lb_policy)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/ext/filters/client_channel/lb_policy/grpclb)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/ext/filters/client_channel/lb_policy/pick_first)
@@ -628,12 +682,14 @@ if test "$PHP_GRPC" != "no"; then
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/compression)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/debug)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/gpr)
+  PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/gprpp)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/http)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/iomgr)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/json)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/profiling)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/security/context)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/security/credentials)
+  PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/security/credentials/alts)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/security/credentials/composite)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/security/credentials/fake)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/security/credentials/google_default)
@@ -650,6 +706,12 @@ if test "$PHP_GRPC" != "no"; then
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/lib/transport)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/plugin_registry)
   PHP_ADD_BUILD_DIR($ext_builddir/src/core/tsi)
+  PHP_ADD_BUILD_DIR($ext_builddir/src/core/tsi/alts/crypt)
+  PHP_ADD_BUILD_DIR($ext_builddir/src/core/tsi/alts/frame_protector)
+  PHP_ADD_BUILD_DIR($ext_builddir/src/core/tsi/alts/handshaker)
+  PHP_ADD_BUILD_DIR($ext_builddir/src/core/tsi/alts/zero_copy_frame_protector)
+  PHP_ADD_BUILD_DIR($ext_builddir/src/core/tsi/ssl/session_cache)
+  PHP_ADD_BUILD_DIR($ext_builddir/third_party/address_sorting)
   PHP_ADD_BUILD_DIR($ext_builddir/third_party/boringssl/crypto)
   PHP_ADD_BUILD_DIR($ext_builddir/third_party/boringssl/crypto/asn1)
   PHP_ADD_BUILD_DIR($ext_builddir/third_party/boringssl/crypto/base64)
@@ -687,5 +749,6 @@ if test "$PHP_GRPC" != "no"; then
   PHP_ADD_BUILD_DIR($ext_builddir/third_party/boringssl/crypto/x509)
   PHP_ADD_BUILD_DIR($ext_builddir/third_party/boringssl/crypto/x509v3)
   PHP_ADD_BUILD_DIR($ext_builddir/third_party/boringssl/ssl)
+  PHP_ADD_BUILD_DIR($ext_builddir/third_party/boringssl/third_party/fiat)
   PHP_ADD_BUILD_DIR($ext_builddir/third_party/nanopb)
 fi

@@ -221,6 +221,8 @@
   %  endif
   % endfor
 
+  DEFINES += PB_FIELD_16BIT
+
   CPPFLAGS += $(CPPFLAGS_$(CONFIG))
   CFLAGS += $(CFLAGS_$(CONFIG))
   CXXFLAGS += $(CXXFLAGS_$(CONFIG))
@@ -412,9 +414,8 @@
 
   ifeq ($(HAS_PKG_CONFIG),true)
   OPENSSL_ALPN_CHECK_CMD = $(PKG_CONFIG) --atleast-version=1.0.2 openssl
-  OPENSSL_NPN_CHECK_CMD = $(PKG_CONFIG) --atleast-version=1.0.1 openssl
   ZLIB_CHECK_CMD = $(PKG_CONFIG) --exists zlib
-  PROTOBUF_CHECK_CMD = $(PKG_CONFIG) --atleast-version=3.0.0 protobuf
+  PROTOBUF_CHECK_CMD = $(PKG_CONFIG) --atleast-version=3.5.0 protobuf
   CARES_CHECK_CMD = $(PKG_CONFIG) --atleast-version=1.11.0 libcares
   else # HAS_PKG_CONFIG
 
@@ -425,7 +426,6 @@
   endif
 
   OPENSSL_ALPN_CHECK_CMD = $(CC) $(CPPFLAGS) $(CFLAGS) -o $(TMPOUT) test/build/openssl-alpn.c $(addprefix -l, $(OPENSSL_LIBS)) $(LDFLAGS)
-  OPENSSL_NPN_CHECK_CMD = $(CC) $(CPPFLAGS) $(CFLAGS) -o $(TMPOUT) test/build/openssl-npn.c $(addprefix -l, $(OPENSSL_LIBS)) $(LDFLAGS)
   BORINGSSL_COMPILE_CHECK_CMD = $(CC) $(CPPFLAGS) ${defaults.boringssl.CPPFLAGS} $(CFLAGS) ${defaults.boringssl.CFLAGS} -o $(TMPOUT) test/build/boringssl.c $(LDFLAGS)
   ZLIB_CHECK_CMD = $(CC) $(CPPFLAGS) $(CFLAGS) -o $(TMPOUT) test/build/zlib.c -lz $(LDFLAGS)
   PROTOBUF_CHECK_CMD = $(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $(TMPOUT) test/build/protobuf.cc -lprotobuf $(LDFLAGS)
@@ -453,13 +453,7 @@
   ifndef REQUIRE_CUSTOM_LIBRARIES_$(CONFIG)
   HAS_SYSTEM_OPENSSL_ALPN ?= $(shell $(OPENSSL_ALPN_CHECK_CMD) 2> /dev/null && echo true || echo false)
   ifeq ($(HAS_SYSTEM_OPENSSL_ALPN),true)
-  HAS_SYSTEM_OPENSSL_NPN = true
   CACHE_MK += HAS_SYSTEM_OPENSSL_ALPN = true,
-  else
-  HAS_SYSTEM_OPENSSL_NPN ?= $(shell $(OPENSSL_NPN_CHECK_CMD) 2> /dev/null && echo true || echo false)
-  endif
-  ifeq ($(HAS_SYSTEM_OPENSSL_NPN),true)
-  CACHE_MK += HAS_SYSTEM_OPENSSL_NPN = true,
   endif
   HAS_SYSTEM_ZLIB ?= $(shell $(ZLIB_CHECK_CMD) 2> /dev/null && echo true || echo false)
   ifeq ($(HAS_SYSTEM_ZLIB),true)
@@ -476,7 +470,6 @@
   else
   # override system libraries if the config requires a custom compiled library
   HAS_SYSTEM_OPENSSL_ALPN = false
-  HAS_SYSTEM_OPENSSL_NPN = false
   HAS_SYSTEM_ZLIB = false
   HAS_SYSTEM_PROTOBUF = false
   HAS_SYSTEM_CARES = false
@@ -588,6 +581,11 @@
   EMBED_CARES ?= false
   endif
 
+  ADDRESS_SORTING_DEP = $(LIBDIR)/$(CONFIG)/libaddress_sorting.a
+  ADDRESS_SORTING_MERGE_OBJS = $(LIBADDRESS_SORTING_OBJS)
+  ADDRESS_SORTING_MERGE_LIBS = $(LIBDIR)/$(CONFIG)/libaddress_sorting.a
+  CPPFLAGS := -Ithird_party/address_sorting/include $(CPPFLAGS)
+
   ifeq ($(EMBED_CARES),true)
   CARES_DEP = $(LIBDIR)/$(CONFIG)/libares.a
   CARES_MERGE_OBJS = $(LIBARES_OBJS)
@@ -618,12 +616,7 @@
   EMBED_OPENSSL ?= $(HAS_EMBEDDED_OPENSSL_ALPN)
   NO_SECURE ?= false
   else # HAS_EMBEDDED_OPENSSL_ALPN=false
-  ifeq ($(HAS_SYSTEM_OPENSSL_NPN),true)
-  EMBED_OPENSSL ?= false
-  NO_SECURE ?= false
-  else
   NO_SECURE ?= true
-  endif # HAS_SYSTEM_OPENSSL_NPN=true
   endif # HAS_EMBEDDED_OPENSSL_ALPN
   endif # HAS_SYSTEM_OPENSSL_ALPN
 
@@ -657,10 +650,10 @@
   else # HAS_PKG_CONFIG=false
   LIBS_SECURE = $(OPENSSL_LIBS)
   endif # HAS_PKG_CONFIG
-  ifeq ($(HAS_SYSTEM_OPENSSL_NPN),true)
+  ifeq ($(DISABLE_ALPN),true)
   CPPFLAGS += -DTSI_OPENSSL_ALPN_SUPPORT=0
   LIBS_SECURE = $(OPENSSL_LIBS)
-  endif # HAS_SYSTEM_OPENSSL_NPN
+  endif # DISABLE_ALPN
   PC_LIBS_SECURE = $(addprefix -l, $(LIBS_SECURE))
   endif # EMBED_OPENSSL
   endif # NO_SECURE
@@ -837,7 +830,7 @@
   	@echo
   	@echo "DEPENDENCY ERROR"
   	@echo
-  	@echo "The target you are trying to run requires protobuf 3.0.0+"
+  	@echo "The target you are trying to run requires protobuf 3.5.0+"
   	@echo "Your system doesn't have it, and neither does the third_party directory."
   	@echo
   	@echo "Please consult INSTALL to get more information."
@@ -851,7 +844,7 @@
   	@echo
   	@echo "DEPENDENCY ERROR"
   	@echo
-  	@echo "The target you are trying to run requires protobuf-compiler 3.0.0+"
+  	@echo "The target you are trying to run requires protobuf-compiler 3.5.0+"
   	@echo "Your system doesn't have it, and neither does the third_party directory."
   	@echo
   	@echo "Please consult INSTALL to get more information."
@@ -881,7 +874,6 @@
 
   run_dep_checks:
   	$(OPENSSL_ALPN_CHECK_CMD) || true
-  	$(OPENSSL_NPN_CHECK_CMD) || true
   	$(ZLIB_CHECK_CMD) || true
   	$(PERFTOOLS_CHECK_CMD) || true
   	$(PROTOBUF_CHECK_CMD) || true
@@ -1478,7 +1470,7 @@
   else
   % endif
 
-  $(LIBDIR)/$(CONFIG)/lib${lib.name}.a: $(ZLIB_DEP) $(OPENSSL_DEP) $(CARES_DEP)\
+  $(LIBDIR)/$(CONFIG)/lib${lib.name}.a: $(ZLIB_DEP) $(OPENSSL_DEP) $(CARES_DEP) $(ADDRESS_SORTING_DEP)\
   ## The else here corresponds to the if secure earlier.
   % else:
   % if lib.language == 'c++':
@@ -1502,6 +1494,9 @@
   % if lib.name != 'ares':
   $(CARES_DEP) \
   % endif
+  % if lib.name != 'address_sorting':
+  $(ADDRESS_SORTING_DEP) \
+  % endif
   % endif
   % if lib.language == 'c++':
    $(PROTOBUF_DEP)\
@@ -1511,6 +1506,7 @@
    $(LIBGPR_OBJS) \
    $(ZLIB_MERGE_OBJS) \
    $(CARES_MERGE_OBJS) \
+   $(ADDRESS_SORTING_MERGE_OBJS) \
   % if lib.get('secure', 'check') == True:
    $(OPENSSL_MERGE_OBJS) \
   % endif
@@ -1524,6 +1520,7 @@
    $(LIBGPR_OBJS) \
    $(ZLIB_MERGE_OBJS) \
    $(CARES_MERGE_OBJS) \
+   $(ADDRESS_SORTING_MERGE_OBJS) \
   % if lib.get('secure', 'check') == True:
    $(OPENSSL_MERGE_OBJS) \
   % endif
@@ -1546,9 +1543,9 @@
     common = '$(LIB' + lib.name.upper() + '_OBJS)'
 
     link_libs = ''
-    lib_deps = ' $(ZLIB_DEP) $(CARES_DEP)'
+    lib_deps = ' $(ZLIB_DEP) $(CARES_DEP) $(ADDRESS_SORTING_DEP)'
     mingw_libs = ''
-    mingw_lib_deps = ' $(ZLIB_DEP) $(CARES_DEP)'
+    mingw_lib_deps = ' $(ZLIB_DEP) $(CARES_DEP) $(ADDRESS_SORTING_DEP)'
     if lib.language == 'c++':
       lib_deps += ' $(PROTOBUF_DEP)'
       mingw_lib_deps += ' $(PROTOBUF_DEP)'
@@ -1573,7 +1570,7 @@
     security = lib.get('secure', 'check')
     if security == True:
       common = common + ' $(OPENSSL_MERGE_LIBS) $(LDLIBS_SECURE)'
-    common = common + ' $(ZLIB_MERGE_LIBS) $(CARES_MERGE_LIBS)'
+    common = common + ' $(ZLIB_MERGE_LIBS) $(CARES_MERGE_LIBS) $(ADDRESS_SORTING_MERGE_LIBS)'
 
     if security in [True, 'check']:
       for src in lib.src:
@@ -1624,7 +1621,7 @@
   % endif
   % if lib.language == 'c++':
   ## If the lib was C++, we have to close the Makefile's if that tested
-  ## the presence of protobuf 3.0.0+
+  ## the presence of protobuf 3.5.0+
 
   endif
   % endif
@@ -1690,7 +1687,7 @@
 
   ifeq ($(NO_PROTOBUF),true)
 
-  # You can't build the protoc plugins or protobuf-enabled targets if you don't have protobuf 3.0.0+.
+  # You can't build the protoc plugins or protobuf-enabled targets if you don't have protobuf 3.5.0+.
 
   $(BINDIR)/$(CONFIG)/${tgt.name}: protobuf_dep_error
 

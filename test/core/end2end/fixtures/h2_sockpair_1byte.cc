@@ -30,7 +30,6 @@
 #include "src/core/ext/filters/http/server/http_server_filter.h"
 #include "src/core/ext/transport/chttp2/transport/chttp2_transport.h"
 #include "src/core/lib/channel/connected_channel.h"
-#include "src/core/lib/gpr/thd.h"
 #include "src/core/lib/iomgr/endpoint_pair.h"
 #include "src/core/lib/iomgr/iomgr.h"
 #include "src/core/lib/surface/channel.h"
@@ -59,8 +58,14 @@ typedef struct {
 static void client_setup_transport(void* ts, grpc_transport* transport) {
   sp_client_setup* cs = static_cast<sp_client_setup*>(ts);
 
-  cs->f->client = grpc_channel_create("socketpair-target", cs->client_args,
+  grpc_arg authority_arg = grpc_channel_arg_string_create(
+      const_cast<char*>(GRPC_ARG_DEFAULT_AUTHORITY),
+      const_cast<char*>("test-authority"));
+  grpc_channel_args* args =
+      grpc_channel_args_copy_and_add(cs->client_args, &authority_arg, 1);
+  cs->f->client = grpc_channel_create("socketpair-target", args,
                                       GRPC_CLIENT_DIRECT_CHANNEL, transport);
+  grpc_channel_args_destroy(args);
 }
 
 static grpc_end2end_test_fixture chttp2_create_fixture_socketpair(
@@ -125,9 +130,9 @@ static void chttp2_tear_down_socketpair(grpc_end2end_test_fixture* f) {
 /* All test configurations */
 static grpc_end2end_test_config configs[] = {
     {"chttp2/socketpair_one_byte_at_a_time",
-     FEATURE_MASK_SUPPORTS_AUTHORITY_HEADER, chttp2_create_fixture_socketpair,
-     chttp2_init_client_socketpair, chttp2_init_server_socketpair,
-     chttp2_tear_down_socketpair},
+     FEATURE_MASK_SUPPORTS_AUTHORITY_HEADER, nullptr,
+     chttp2_create_fixture_socketpair, chttp2_init_client_socketpair,
+     chttp2_init_server_socketpair, chttp2_tear_down_socketpair},
 };
 
 int main(int argc, char** argv) {

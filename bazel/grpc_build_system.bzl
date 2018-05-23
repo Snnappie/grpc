@@ -37,7 +37,9 @@ def _get_external_deps(external_deps):
   ret = []
   for dep in external_deps:
     if dep == "nanopb":
-      ret += ["//third_party/nanopb"]
+      ret += ["grpc_nanopb"]
+    elif dep == "address_sorting":
+      ret += ["//third_party/address_sorting"]
     elif dep == "cares":
       ret += select({"//:grpc_no_ares": [],
                      "//conditions:default": ["//external:cares"],})
@@ -97,7 +99,7 @@ def grpc_proto_plugin(name, srcs = [], deps = []):
 load("//:bazel/cc_grpc_library.bzl", "cc_grpc_library")
 
 def grpc_proto_library(name, srcs = [], deps = [], well_known_protos = False,
-                       has_services = True, use_external = False, generate_mock = False):
+                       has_services = True, use_external = False, generate_mocks = False):
   cc_grpc_library(
     name = name,
     srcs = srcs,
@@ -105,10 +107,10 @@ def grpc_proto_library(name, srcs = [], deps = [], well_known_protos = False,
     well_known_protos = well_known_protos,
     proto_only = not has_services,
     use_external = use_external,
-    generate_mock = generate_mock,
+    generate_mocks = generate_mocks,
   )
 
-def grpc_cc_test(name, srcs = [], deps = [], external_deps = [], args = [], data = [], uses_polling = True, language = "C++"):
+def grpc_cc_test(name, srcs = [], deps = [], external_deps = [], args = [], data = [], uses_polling = True, language = "C++", size = "medium", timeout = "moderate"):
   copts = []
   if language.upper() == "C":
     copts = if_not_windows(["-std=c99"])
@@ -120,6 +122,8 @@ def grpc_cc_test(name, srcs = [], deps = [], external_deps = [], args = [], data
     'deps': deps + _get_external_deps(external_deps),
     'copts': copts,
     'linkopts': if_not_windows(["-pthread"]),
+    'size': size,
+    'timeout': timeout,
   }
   if uses_polling:
     native.cc_test(testonly=True, tags=['manual'], **args)
@@ -130,9 +134,11 @@ def grpc_cc_test(name, srcs = [], deps = [], external_deps = [], args = [], data
         srcs = [
           '//test/core/util:run_with_poller_sh',
         ],
+        size = size,
+        timeout = timeout,
         args = [
           poller,
-          '$(location %s)' % name
+          '$(location %s)' % name,
         ] + args['args'],
       )
   else:
@@ -155,7 +161,23 @@ def grpc_cc_binary(name, srcs = [], deps = [], external_deps = [], args = [], da
   )
 
 def grpc_generate_one_off_targets():
-  pass
+  native.cc_library(
+    name = "grpc_nanopb",
+    hdrs = [
+      "//third_party/nanopb:pb.h",
+      "//third_party/nanopb:pb_common.h",
+      "//third_party/nanopb:pb_decode.h",
+      "//third_party/nanopb:pb_encode.h",
+    ],
+    srcs = [
+      "//third_party/nanopb:pb_common.c",
+      "//third_party/nanopb:pb_decode.c",
+      "//third_party/nanopb:pb_encode.c",
+    ],
+    defines = [
+      "PB_FIELD_16BIT=1",
+    ],
+  )
 
 def grpc_sh_test(name, srcs, args = [], data = []):
   native.sh_test(
@@ -170,17 +192,14 @@ def grpc_sh_binary(name, srcs, data = []):
     srcs = srcs,
     data = data)
 
-def grpc_py_binary(name, srcs, data = [], deps = []):
-  if name == "test_dns_server":
-    deps = _get_external_deps([
-      "twisted",
-      "yaml",
-    ])
+def grpc_py_binary(name, srcs, data = [], deps = [], external_deps = [], testonly = False):
   native.py_binary(
     name = name,
     srcs = srcs,
+    testonly = testonly,
     data = data,
-    deps = deps)
+    deps = deps + _get_external_deps(external_deps)
+  )
 
 def grpc_package(name, visibility = "private", features = []):
   if visibility == "tests":

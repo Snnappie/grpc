@@ -33,7 +33,7 @@
 #include "src/core/lib/channel/channel_args.h"
 #include "src/core/lib/gpr/host_port.h"
 #include "src/core/lib/gpr/string.h"
-#include "src/core/lib/gpr/thd.h"
+#include "src/core/lib/gprpp/thd.h"
 #include "src/core/lib/http/parser.h"
 #include "src/core/lib/iomgr/closure.h"
 #include "src/core/lib/iomgr/combiner.h"
@@ -53,7 +53,7 @@
 
 struct grpc_end2end_http_proxy {
   char* proxy_name;
-  gpr_thd_id thd;
+  grpc_core::Thread thd;
   grpc_tcp_server* server;
   grpc_channel_args* channel_args;
   gpr_mu* mu;
@@ -535,10 +535,10 @@ grpc_end2end_http_proxy* grpc_end2end_http_proxy_create(
   GPR_ASSERT(error == GRPC_ERROR_NONE);
   // Bind to port.
   grpc_resolved_address resolved_addr;
-  struct sockaddr_in* addr =
-      reinterpret_cast<struct sockaddr_in*>(resolved_addr.addr);
+  grpc_sockaddr_in* addr =
+      reinterpret_cast<grpc_sockaddr_in*>(resolved_addr.addr);
   memset(&resolved_addr, 0, sizeof(resolved_addr));
-  addr->sin_family = AF_INET;
+  addr->sin_family = GRPC_AF_INET;
   grpc_sockaddr_set_port(&resolved_addr, proxy_port);
   int port;
   error = grpc_tcp_server_add_port(proxy->server, &resolved_addr, &port);
@@ -550,10 +550,8 @@ grpc_end2end_http_proxy* grpc_end2end_http_proxy_create(
   grpc_tcp_server_start(proxy->server, &proxy->pollset, 1, on_accept, proxy);
 
   // Start proxy thread.
-  gpr_thd_options opt = gpr_thd_options_default();
-  gpr_thd_options_set_joinable(&opt);
-  GPR_ASSERT(
-      gpr_thd_new(&proxy->thd, "grpc_http_proxy", thread_main, proxy, &opt));
+  proxy->thd = grpc_core::Thread("grpc_http_proxy", thread_main, proxy);
+  proxy->thd.Start();
   return proxy;
 }
 
@@ -566,7 +564,7 @@ static void destroy_pollset(void* arg, grpc_error* error) {
 void grpc_end2end_http_proxy_destroy(grpc_end2end_http_proxy* proxy) {
   gpr_unref(&proxy->users);  // Signal proxy thread to shutdown.
   grpc_core::ExecCtx exec_ctx;
-  gpr_thd_join(proxy->thd);
+  proxy->thd.Join();
   grpc_tcp_server_shutdown_listeners(proxy->server);
   grpc_tcp_server_unref(proxy->server);
   gpr_free(proxy->proxy_name);

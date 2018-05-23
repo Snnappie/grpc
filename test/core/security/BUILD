@@ -67,6 +67,31 @@ grpc_cc_test(
 )
 
 grpc_cc_test(
+    name = "json_token_test",
+    srcs = ["json_token_test.cc"],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//test/core/util:gpr_test_util",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "jwt_verifier_test",
+    srcs = ["jwt_verifier_test.cc"],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//test/core/util:gpr_test_util",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+
+grpc_cc_test(
     name = "secure_endpoint_test",
     srcs = ["secure_endpoint_test.cc"],
     language = "C++",
@@ -134,5 +159,54 @@ grpc_cc_binary(
         "//:gpr",
         "//:grpc",
         "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "check_gcp_environment_linux_test",
+    srcs = ["check_gcp_environment_linux_test.cc"],
+    language = "C++",
+    deps = [
+        "//:alts_util",
+        "//:gpr",
+        "//:gpr_base",
+        "//:grpc",
+    ],
+)
+
+grpc_cc_test(
+    name = "check_gcp_environment_windows_test",
+    srcs = ["check_gcp_environment_windows_test.cc"],
+    language = "C++",
+    deps = [
+        "//:alts_util",
+        "//:gpr",
+        "//:gpr_base",
+        "//:grpc",
+    ],
+)
+
+grpc_cc_test(
+    name = "grpc_alts_credentials_options_test",
+    srcs = ["grpc_alts_credentials_options_test.cc"],
+    language = "C++",
+    deps = [
+        "//:alts_util",
+        "//:gpr",
+        "//:grpc",
+    ],
+)
+
+grpc_cc_test(
+    name = "alts_security_connector_test",
+    srcs = ["alts_security_connector_test.cc"],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//:grpc_base_c", 
+        "//:grpc_secure",
+        "//:tsi", 
+        "//:tsi_interface",
     ],
 )

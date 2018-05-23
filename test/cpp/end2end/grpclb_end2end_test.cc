@@ -21,22 +21,25 @@
 #include <sstream>
 #include <thread>
 
-#include <grpc++/channel.h>
-#include <grpc++/client_context.h>
-#include <grpc++/create_channel.h>
-#include <grpc++/server.h>
-#include <grpc++/server_builder.h>
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
 #include <grpc/support/string_util.h>
 #include <grpc/support/time.h>
+#include <grpcpp/channel.h>
+#include <grpcpp/client_context.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
 
 #include "src/core/ext/filters/client_channel/resolver/fake/fake_resolver.h"
 #include "src/core/lib/gpr/env.h"
-#include "src/core/lib/gpr/thd.h"
 #include "src/core/lib/gprpp/ref_counted_ptr.h"
 #include "src/core/lib/iomgr/sockaddr.h"
+#include "src/core/lib/security/credentials/fake/fake_credentials.h"
+#include "src/cpp/server/secure_server_credentials.h"
+
+#include "src/cpp/client/secure_credentials.h"
 
 #include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
@@ -121,12 +124,22 @@ class CountedService : public ServiceType {
 using BackendService = CountedService<TestServiceImpl>;
 using BalancerService = CountedService<LoadBalancer::Service>;
 
+const char g_kCallCredsMdKey[] = "Balancer should not ...";
+const char g_kCallCredsMdValue[] = "... receive me";
+
 class BackendServiceImpl : public BackendService {
  public:
   BackendServiceImpl() {}
 
   Status Echo(ServerContext* context, const EchoRequest* request,
               EchoResponse* response) override {
+    // Backend should receive the call credentials metadata.
+    auto call_credentials_entry =
+        context->client_metadata().find(g_kCallCredsMdKey);
+    EXPECT_NE(call_credentials_entry, context->client_metadata().end());
+    if (call_credentials_entry != context->client_metadata().end()) {
+      EXPECT_EQ(call_credentials_entry->second, g_kCallCredsMdValue);
+    }
     IncreaseRequestCount();
     const auto status = TestServiceImpl::Echo(context, request, response);
     IncreaseResponseCount();
@@ -185,6 +198,9 @@ class BalancerServiceImpl : public BalancerService {
         shutdown_(false) {}
 
   Status BalanceLoad(ServerContext* context, Stream* stream) override {
+    // Balancer shouldn't receive the call credentials metadata.
+    EXPECT_EQ(context->client_metadata().find(g_kCallCredsMdKey),
+              context->client_metadata().end());
     gpr_log(GPR_INFO, "LB[%p]: BalanceLoad", this);
     LoadBalanceRequest request;
     std::vector<ResponseDelayPair> responses_and_delays;
@@ -307,9 +323,7 @@ class BalancerServiceImpl : public BalancerService {
                     int delay_ms) {
     gpr_log(GPR_INFO, "LB[%p]: sleeping for %d ms...", this, delay_ms);
     if (delay_ms > 0) {
-      gpr_sleep_until(
-          gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
-                       gpr_time_from_millis(delay_ms, GPR_TIMESPAN)));
+      gpr_sleep_until(grpc_timeout_milliseconds_to_deadline(delay_ms));
     }
     gpr_log(GPR_INFO, "LB[%p]: Woke up! Sending response '%s'", this,
             response.DebugString().c_str());
@@ -378,15 +392,29 @@ class GrpclbEnd2endTest : public ::testing::Test {
     SetNextResolution(addresses);
   }
 
-  void ResetStub(int fallback_timeout = 0) {
+  void ResetStub(int fallback_timeout = 0,
+                 const grpc::string& expected_targets = "") {
     ChannelArguments args;
     args.SetGrpclbFallbackTimeout(fallback_timeout);
     args.SetPointer(GRPC_ARG_FAKE_RESOLVER_RESPONSE_GENERATOR,
                     response_generator_.get());
+    if (!expected_targets.empty()) {
+      args.SetString(GRPC_ARG_FAKE_SECURITY_EXPECTED_TARGETS, expected_targets);
+    }
     std::ostringstream uri;
-    uri << "fake:///servername_not_used";
-    channel_ =
-        CreateCustomChannel(uri.str(), InsecureChannelCredentials(), args);
+    uri << "fake:///" << kApplicationTargetName_;
+    // TODO(dgq): templatize tests to run everything using both secure and
+    // insecure channel credentials.
+    grpc_channel_credentials* channel_creds =
+        grpc_fake_transport_security_credentials_create();
+    grpc_call_credentials* call_creds = grpc_md_only_test_credentials_create(
+        g_kCallCredsMdKey, g_kCallCredsMdValue, false);
+    std::shared_ptr<ChannelCredentials> creds(
+        new SecureChannelCredentials(grpc_composite_channel_credentials_create(
+            channel_creds, call_creds, nullptr)));
+    grpc_call_credentials_unref(call_creds);
+    grpc_channel_credentials_unref(channel_creds);
+    channel_ = CreateCustomChannel(uri.str(), creds, args);
     stub_ = grpc::testing::EchoTestService::NewStub(channel_);
   }
 
@@ -447,7 +475,7 @@ class GrpclbEnd2endTest : public ::testing::Test {
 
   void WaitForBackend(size_t backend_idx) {
     do {
-      SendRpc();
+      (void)SendRpc();
     } while (backends_[backend_idx]->request_count() == 0);
     ResetBackendCounters();
   }
@@ -523,10 +551,10 @@ class GrpclbEnd2endTest : public ::testing::Test {
     return status;
   }
 
-  void CheckRpcSendOk(const size_t times = 1) {
+  void CheckRpcSendOk(const size_t times = 1, const int timeout_ms = 1000) {
     for (size_t i = 0; i < times; ++i) {
       EchoResponse response;
-      const Status status = SendRpc(&response);
+      const Status status = SendRpc(&response, timeout_ms);
       EXPECT_TRUE(status.ok()) << "code=" << status.error_code()
                                << " message=" << status.error_message();
       EXPECT_EQ(response.message(), kRequestMessage_);
@@ -564,8 +592,9 @@ class GrpclbEnd2endTest : public ::testing::Test {
       std::ostringstream server_address;
       server_address << server_host << ":" << port_;
       ServerBuilder builder;
-      builder.AddListeningPort(server_address.str(),
-                               InsecureServerCredentials());
+      std::shared_ptr<ServerCredentials> creds(new SecureServerCredentials(
+          grpc_fake_transport_security_server_credentials_create()));
+      builder.AddListeningPort(server_address.str(), creds);
       builder.RegisterService(service_);
       server_ = builder.BuildAndStart();
       cond->notify_one();
@@ -598,6 +627,7 @@ class GrpclbEnd2endTest : public ::testing::Test {
   grpc_core::RefCountedPtr<grpc_core::FakeResolverResponseGenerator>
       response_generator_;
   const grpc::string kRequestMessage_ = "Live long and prosper.";
+  const grpc::string kApplicationTargetName_ = "application_target_name";
 };
 
 class SingleBalancerTest : public GrpclbEnd2endTest {
@@ -633,11 +663,52 @@ TEST_F(SingleBalancerTest, Vanilla) {
   EXPECT_EQ("grpclb", channel_->GetLoadBalancingPolicyName());
 }
 
+TEST_F(SingleBalancerTest, SecureNaming) {
+  ResetStub(0, kApplicationTargetName_ + ";lb");
+  SetNextResolution({AddressData{balancer_servers_[0].port_, true, "lb"}});
+  const size_t kNumRpcsPerAddress = 100;
+  ScheduleResponseForBalancer(
+      0, BalancerServiceImpl::BuildResponseForBackends(GetBackendPorts(), {}),
+      0);
+  // Make sure that trying to connect works without a call.
+  channel_->GetState(true /* try_to_connect */);
+  // We need to wait for all backends to come online.
+  WaitForAllBackends();
+  // Send kNumRpcsPerAddress RPCs per server.
+  CheckRpcSendOk(kNumRpcsPerAddress * num_backends_);
+
+  // Each backend should have gotten 100 requests.
+  for (size_t i = 0; i < backends_.size(); ++i) {
+    EXPECT_EQ(kNumRpcsPerAddress,
+              backend_servers_[i].service_->request_count());
+  }
+  balancers_[0]->NotifyDoneWithServerlists();
+  // The balancer got a single request.
+  EXPECT_EQ(1U, balancer_servers_[0].service_->request_count());
+  // and sent a single response.
+  EXPECT_EQ(1U, balancer_servers_[0].service_->response_count());
+  // Check LB policy name for the channel.
+  EXPECT_EQ("grpclb", channel_->GetLoadBalancingPolicyName());
+}
+
+TEST_F(SingleBalancerTest, SecureNamingDeathTest) {
+  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+  // Make sure that we blow up (via abort() from the security connector) when
+  // the name from the balancer doesn't match expectations.
+  ASSERT_DEATH(
+      {
+        ResetStub(0, kApplicationTargetName_ + ";lb");
+        SetNextResolution(
+            {AddressData{balancer_servers_[0].port_, true, "woops"}});
+        channel_->WaitForConnected(grpc_timeout_seconds_to_deadline(1));
+      },
+      "");
+}
+
 TEST_F(SingleBalancerTest, InitiallyEmptyServerlist) {
   SetNextResolutionAllBalancers();
   const int kServerlistDelayMs = 500 * grpc_test_slowdown_factor();
-  const int kCallDeadlineMs = 1000 * grpc_test_slowdown_factor();
-
+  const int kCallDeadlineMs = kServerlistDelayMs * 2;
   // First response is an empty serverlist, sent right away.
   ScheduleResponseForBalancer(0, LoadBalanceResponse(), 0);
   // Send non-empty serverlist only after kServerlistDelayMs
@@ -647,20 +718,15 @@ TEST_F(SingleBalancerTest, InitiallyEmptyServerlist) {
 
   const auto t0 = system_clock::now();
   // Client will block: LB will initially send empty serverlist.
-  CheckRpcSendOk(num_backends_);
+  CheckRpcSendOk(1, kCallDeadlineMs);
   const auto ellapsed_ms =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           system_clock::now() - t0);
   // but eventually, the LB sends a serverlist update that allows the call to
   // proceed. The call delay must be larger than the delay in sending the
-  // populated serverlist but under the call's deadline.
+  // populated serverlist but under the call's deadline (which is enforced by
+  // the call's deadline).
   EXPECT_GT(ellapsed_ms.count(), kServerlistDelayMs);
-  EXPECT_LT(ellapsed_ms.count(), kCallDeadlineMs);
-
-  // Each backend should have gotten 1 request.
-  for (size_t i = 0; i < backends_.size(); ++i) {
-    EXPECT_EQ(1U, backend_servers_[i].service_->request_count());
-  }
   balancers_[0]->NotifyDoneWithServerlists();
   // The balancer got a single request.
   EXPECT_EQ(1U, balancer_servers_[0].service_->request_count());
@@ -890,7 +956,10 @@ TEST_F(UpdatesTest, UpdateBalancers) {
   ScheduleResponseForBalancer(
       1, BalancerServiceImpl::BuildResponseForBackends(second_backend, {}), 0);
 
-  // Start servers and send 10 RPCs per server.
+  // Wait until the first backend is ready.
+  WaitForBackend(0);
+
+  // Send 10 requests.
   gpr_log(GPR_INFO, "========= BEFORE FIRST BATCH ==========");
   CheckRpcSendOk(10);
   gpr_log(GPR_INFO, "========= DONE WITH FIRST BATCH ==========");
@@ -952,7 +1021,10 @@ TEST_F(UpdatesTest, UpdateBalancersRepeated) {
   ScheduleResponseForBalancer(
       1, BalancerServiceImpl::BuildResponseForBackends(second_backend, {}), 0);
 
-  // Start servers and send 10 RPCs per server.
+  // Wait until the first backend is ready.
+  WaitForBackend(0);
+
+  // Send 10 requests.
   gpr_log(GPR_INFO, "========= BEFORE FIRST BATCH ==========");
   CheckRpcSendOk(10);
   gpr_log(GPR_INFO, "========= DONE WITH FIRST BATCH ==========");
@@ -1067,7 +1139,7 @@ TEST_F(UpdatesTest, UpdateBalancersDeadUpdate) {
   EXPECT_EQ(0U, backend_servers_[1].service_->request_count());
   WaitForBackend(1);
 
-  // This is serviced by the existing RR policy
+  // This is serviced by the updated RR policy
   backend_servers_[1].service_->ResetCounters();
   gpr_log(GPR_INFO, "========= BEFORE THIRD BATCH ==========");
   CheckRpcSendOk(10);
